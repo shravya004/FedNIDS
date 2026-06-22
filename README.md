@@ -201,3 +201,79 @@ Then have Member 2 and Member 3 clone it and branch off `main` for
 their own modules (`src/trust/` and `src/federated/` are natural next
 folders to add, kept out of this repo so there's no merge conflict on
 day one).
+
+## Adaptive Trust Framework (Member 2)
+
+The Adaptive Trust Framework enhances the security of the federated intrusion detection system by identifying unreliable or malicious clients before global model aggregation.
+
+### Components
+
+#### Adaptive Trust Scoring
+
+Each participating client receives a trust score based on multiple factors:
+
+* Embedding similarity between the client model and the global model
+* Local validation accuracy
+* Historical reputation
+* Anomaly score
+
+#### Reputation Memory
+
+A reputation manager maintains historical trust information for every federated client across communication rounds.
+
+Features include:
+
+* Current reputation
+* Trust history
+* Average reputation
+* Communication round tracking
+* Consecutive low-trust counter
+
+#### Automatic Blacklisting
+
+Clients with consecutive low trust scores are automatically blacklisted and excluded from future aggregation rounds.
+
+Stored information includes:
+
+* Client ID
+* Blacklisting reason
+* Communication round
+* Trust score
+
+#### Trust-Aware Aggregation
+
+Instead of conventional FedAvg, client model updates are weighted according to their trust scores. Blacklisted clients are excluded from aggregation.
+
+### Implemented Modules
+
+```
+src/trust/
+│
+├── trust_score.py
+├── reputation.py
+├── blacklist.py
+├── aggregation.py
+└── integration.py
+```
+
+### Testing
+
+The following test scripts validate the implementation:
+
+```
+test_trust.py
+test_reputation.py
+test_blacklist.py
+test_aggregation.py
+test_integration.py
+test_member2_complete.py
+```
+
+The complete demonstration (`test_member2_complete.py`) verifies:
+
+* Adaptive trust scoring
+* Reputation updates
+* Automatic blacklisting
+* Trust-aware aggregation
+* End-to-end trust framework execution
+
