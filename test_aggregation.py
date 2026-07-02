@@ -55,7 +55,7 @@ trust_scores = [
 
 print("\nBefore Blacklisting")
 
-aggregator.print_weights(trust_scores)
+#aggregator.print_weights(trust_scores)
 
 global_model = aggregator.aggregate(
 
