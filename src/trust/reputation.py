@@ -23,7 +23,7 @@ FLNET2023
 """
 
 from collections import defaultdict
-
+from datetime import datetime
 
 class ReputationManager:
 
@@ -44,6 +44,18 @@ class ReputationManager:
         # Consecutive low trust counter
         self.low_trust_counter = defaultdict(int)
 
+        # Best reputation achieved
+        self.best_reputation = defaultdict(float)
+
+        # Worst reputation achieved
+        self.worst_reputation = defaultdict(lambda: 1.0)
+
+        # Last federated round updated
+        self.last_round = defaultdict(int)
+
+        # Timestamp of last update
+        self.last_updated = {}
+
     # ------------------------------------------------------
 
     def initialize_client(
@@ -54,17 +66,28 @@ class ReputationManager:
         """
         Register a new client.
         """
-
         if client_id not in self.reputation:
 
             self.reputation[client_id] = initial_reputation
 
+            self.best_reputation[client_id] = initial_reputation
+
+            self.worst_reputation[client_id] = initial_reputation
+
+            self.rounds[client_id] = 0
+
+            self.low_trust_counter[client_id] = 0
+
+            self.last_round[client_id] = 0
+
+            self.last_updated[client_id] = None
     # ------------------------------------------------------
 
     def update(
         self,
         client_id,
-        trust_score
+        trust_score,
+        current_round
     ):
         """
         Update client reputation after one FL round.
@@ -76,9 +99,11 @@ class ReputationManager:
 
         self.history[client_id].append(trust_score)
 
+        self.last_round[client_id] = current_round
+        self.last_updated[client_id] = datetime.now()
+
         self.rounds[client_id] += 1
 
-        # Consecutive low trust tracking
         if trust_score < 0.40:
 
             self.low_trust_counter[client_id] += 1
@@ -86,6 +111,47 @@ class ReputationManager:
         else:
 
             self.low_trust_counter[client_id] = 0
+
+        if trust_score > self.best_reputation[client_id]:
+            self.best_reputation[client_id] = trust_score
+
+        if trust_score < self.worst_reputation[client_id]:
+            self.worst_reputation[client_id] = trust_score
+
+    def get_best_reputation(self, client_id):
+        return self.best_reputation.get(client_id, 0.0)
+
+    def get_worst_reputation(self, client_id):
+        return self.worst_reputation.get(client_id, 0.0)
+
+    def get_last_round(self, client_id):
+        return self.last_round.get(client_id, 0)
+
+    def get_last_updated(self, client_id):
+        return self.last_updated.get(client_id, None)
+    
+    def get_global_average(self):
+
+        if not self.reputation:
+            return 0.0
+
+        return sum(self.reputation.values()) / len(self.reputation)
+
+
+    def get_best_client(self):
+
+        if not self.reputation:
+            return None
+
+        return max(self.reputation, key=self.reputation.get)
+
+
+    def get_worst_client(self):
+
+        if not self.reputation:
+            return None
+
+        return min(self.reputation, key=self.reputation.get)
 
     # ------------------------------------------------------
 
@@ -165,12 +231,13 @@ class ReputationManager:
         """
 
         self.reputation[client_id] = initial_reputation
-
         self.history[client_id].clear()
-
         self.rounds[client_id] = 0
-
         self.low_trust_counter[client_id] = 0
+        self.best_reputation[client_id] = initial_reputation
+        self.worst_reputation[client_id] = initial_reputation
+        self.last_round[client_id] = 0
+        self.last_updated.pop(client_id, None)
 
     # ------------------------------------------------------
 
@@ -181,14 +248,14 @@ class ReputationManager:
         """
         Remove client completely.
         """
-
         self.reputation.pop(client_id, None)
-
         self.history.pop(client_id, None)
-
         self.rounds.pop(client_id, None)
-
         self.low_trust_counter.pop(client_id, None)
+        self.best_reputation.pop(client_id, None)
+        self.worst_reputation.pop(client_id, None)
+        self.last_round.pop(client_id, None)
+        self.last_updated.pop(client_id, None)
 
     # ------------------------------------------------------
 
@@ -219,7 +286,15 @@ class ReputationManager:
 
                 "rounds": self.get_rounds(client),
 
-                "low_trust": self.get_low_trust_count(client)
+                "low_trust": self.get_low_trust_count(client),
+
+                "best": self.get_best_reputation(client),
+
+                "worst": self.get_worst_reputation(client),
+
+                "last_round": self.get_last_round(client),
+
+                "last_updated": str(self.get_last_updated(client))
 
             }
 
@@ -227,6 +302,25 @@ class ReputationManager:
 
     # ------------------------------------------------------
 
+    def export_statistics(self):
+
+        return {
+
+            "total_clients": len(self),
+
+            "average_reputation": round(
+                self.get_global_average(),
+                4
+            ),
+
+            "best_client": self.get_best_client(),
+
+            "worst_client": self.get_worst_client(),
+
+            "clients": self.reputation_summary()
+
+        }
+    
     def print_summary(self):
         """
         Print complete reputation summary.
@@ -268,6 +362,46 @@ class ReputationManager:
                 f"Low Trust Counter : "
                 f"{self.get_low_trust_count(client)}"
             )
+
+            print(
+                f"Best Reputation : "
+                f"{self.get_best_reputation(client):.4f}"
+            )
+
+            print(
+                f"Worst Reputation : "
+                f"{self.get_worst_reputation(client):.4f}"
+            )
+
+            print(
+                f"Last Updated Round : "
+                f"{self.get_last_round(client)}"
+            )
+
+            print(
+                f"Last Updated : "
+                f"{self.get_last_updated(client)}"
+            )
+
+        print("\nOverall Statistics")
+        print("-" * 45)
+
+        print(
+            f"Average Reputation : "
+            f"{self.get_global_average():.4f}"
+        )
+
+        print(
+            f"Best Client : "
+            f"{self.get_best_client()}"
+        )
+
+        print(
+            f"Worst Client : "
+            f"{self.get_worst_client()}"
+        )
+
+       
 
     # ------------------------------------------------------
 

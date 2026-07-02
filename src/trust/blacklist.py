@@ -14,9 +14,10 @@ Features
 4. Store blacklist reason
 5. Store communication round
 6. Store trust score
-7. Print blacklist summary
-8. Recover clients (optional)
-9. Return blacklist statistics
+7. Store timestamp
+8. Store violation count
+9. Print blacklist summary
+10. Export blacklist statistics
 
 Project:
 Adaptive Trust-Aware Federated Intrusion Detection
@@ -24,6 +25,8 @@ Adaptive Trust-Aware Federated Intrusion Detection
 Dataset:
 FLNET2023
 """
+
+from datetime import datetime
 
 
 class BlacklistManager:
@@ -42,11 +45,25 @@ class BlacklistManager:
         client_id,
         reason,
         round_number,
-        trust_score
+        trust_score,
     ):
         """
         Add a client to the blacklist.
         """
+
+        if client_id in self.blacklist:
+
+            self.blacklist[client_id]["violations"] += 1
+
+            self.blacklist[client_id]["reason"] = reason
+
+            self.blacklist[client_id]["round"] = round_number
+
+            self.blacklist[client_id]["trust_score"] = trust_score
+
+            self.blacklist[client_id]["timestamp"] = datetime.now()
+
+            return
 
         self.blacklist[client_id] = {
 
@@ -54,7 +71,11 @@ class BlacklistManager:
 
             "round": round_number,
 
-            "trust_score": trust_score
+            "trust_score": trust_score,
+
+            "timestamp": datetime.now(),
+
+            "violations": 1,
 
         }
 
@@ -62,26 +83,22 @@ class BlacklistManager:
 
     def remove_client(
         self,
-        client_id
+        client_id,
     ):
         """
-        Remove a client from the blacklist.
+        Remove a client from blacklist.
         """
 
-        if client_id in self.blacklist:
-
-            del self.blacklist[client_id]
+        self.blacklist.pop(client_id, None)
 
     # ------------------------------------------------------
 
     def recover_client(
         self,
-        client_id
+        client_id,
     ):
         """
         Recover a previously blacklisted client.
-
-        (Future enhancement)
         """
 
         self.remove_client(client_id)
@@ -90,10 +107,10 @@ class BlacklistManager:
 
     def is_blacklisted(
         self,
-        client_id
+        client_id,
     ):
         """
-        Check whether a client is blacklisted.
+        Check blacklist status.
         """
 
         return client_id in self.blacklist
@@ -102,27 +119,22 @@ class BlacklistManager:
 
     def get_blacklist_info(
         self,
-        client_id
+        client_id,
     ):
         """
-        Return blacklist information of one client.
+        Return blacklist information.
         """
 
-        return self.blacklist.get(
-            client_id,
-            None
-        )
+        return self.blacklist.get(client_id, None)
 
     # ------------------------------------------------------
 
     def get_blacklisted_clients(self):
         """
-        Return list of all blacklisted clients.
+        Return all blacklisted clients.
         """
 
-        return list(
-            self.blacklist.keys()
-        )
+        return list(self.blacklist.keys())
 
     # ------------------------------------------------------
 
@@ -131,15 +143,13 @@ class BlacklistManager:
         Return total number of blacklisted clients.
         """
 
-        return len(
-            self.blacklist
-        )
+        return len(self.blacklist)
 
     # ------------------------------------------------------
 
     def clear_blacklist(self):
         """
-        Remove all blacklisted clients.
+        Remove every client from blacklist.
         """
 
         self.blacklist.clear()
@@ -155,7 +165,22 @@ class BlacklistManager:
 
             "total_blacklisted": self.total_blacklisted(),
 
-            "clients": self.get_blacklisted_clients()
+            "clients": self.get_blacklisted_clients(),
+
+        }
+
+    # ------------------------------------------------------
+
+    def export_statistics(self):
+        """
+        Export blacklist information.
+        """
+
+        return {
+
+            "total_blacklisted": self.total_blacklisted(),
+
+            "clients": self.blacklist,
 
         }
 
@@ -183,11 +208,24 @@ class BlacklistManager:
 
             print("-" * 45)
 
-            print(f"Reason       : {info['reason']}")
+            print(f"Reason          : {info['reason']}")
 
-            print(f"Round        : {info['round']}")
+            print(f"Round           : {info['round']}")
 
-            print(f"Trust Score  : {info['trust_score']:.4f}")
+            print(f"Trust Score     : {info['trust_score']:.4f}")
+
+            print(f"Violations      : {info['violations']}")
+
+            print(f"Blacklisted On  : {info['timestamp']}")
+
+        print("\n")
+        print("=" * 65)
+
+        print(
+            f"Total Blacklisted Clients : {self.total_blacklisted()}"
+        )
+
+        print("=" * 65)
 
     # ------------------------------------------------------
 

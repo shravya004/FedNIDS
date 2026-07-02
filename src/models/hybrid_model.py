@@ -1,33 +1,3 @@
-"""
-src/models/hybrid_model.py
-
-HybridGRUTransformer
-=====================
-The shared intrusion-detection backbone for the Federated IDS project.
-
-A client's network-flow feature vector (length F) is reshaped into a
-short sequence (seq_len, input_dim) -- see src/datasets/flnet_dataset.py.
-The GRU first models local sequential/feature dependencies, a
-Transformer encoder then models longer-range relationships across the
-GRU outputs, and a small classifier head produces attack-class logits.
-
-This module has ZERO project-specific dependencies (no Flower, no
-training loop) so it can be imported as-is by:
-  * Member 3, inside the Flower NumPyClient / server-side aggregation code
-  * Member 2, via forward_features() / get_weights() for trust scoring
-  * scripts/sanity_check_train.py, for a quick centralized smoke test
-
-Usage
------
-    from src.models.hybrid_model import HybridGRUTransformer
-
-    model = HybridGRUTransformer(input_dim=1, seq_len=64, num_classes=5)
-    logits = model(x)                 # x: (batch, seq_len, input_dim)
-    probs  = model.predict_proba(x)
-    weights = model.get_weights()     # list[np.ndarray] -- Flower-ready
-    model.set_weights(weights)
-"""
-
 from typing import List
 
 import numpy as np
@@ -38,7 +8,9 @@ from src.models.positional_encoding import PositionalEncoding
 
 
 class HybridGRUTransformer(nn.Module):
-    """GRU encoder -> Transformer encoder -> classification head."""
+    """
+    Hybrid GRU + Transformer model for Federated Intrusion Detection.
+    """
 
     def __init__(
         self,
@@ -53,134 +25,593 @@ class HybridGRUTransformer(nn.Module):
         transformer_num_layers: int = 2,
         transformer_dim_feedforward: int = 256,
         dropout: float = 0.2,
-        pooling: str = "mean",  # "mean" | "last" | "cls"
+        pooling: str = "mean",
     ):
+
         super().__init__()
 
+        # ==========================================================
+        # Validation
+        # ==========================================================
+
         if transformer_d_model % transformer_nhead != 0:
+
             raise ValueError(
-                f"transformer_d_model ({transformer_d_model}) must be divisible by "
-                f"transformer_nhead ({transformer_nhead})"
+
+                "Transformer hidden dimension must be divisible "
+                "by the number of attention heads."
+
             )
+
         if pooling not in ("mean", "last", "cls"):
-            raise ValueError(f"pooling must be one of 'mean'/'last'/'cls', got {pooling!r}")
+
+            raise ValueError(
+
+                "Pooling must be one of "
+                "'mean', 'last' or 'cls'."
+
+            )
+
+        # ==========================================================
+        # Store Configuration
+        # ==========================================================
 
         self.input_dim = input_dim
+
         self.seq_len = seq_len
+
         self.num_classes = num_classes
+
         self.pooling = pooling
 
-        # ---- 1. GRU stage --------------------------------------------------
-        gru_out_dim = gru_hidden_size * (2 if gru_bidirectional else 1)
-        self.gru = nn.GRU(
-            input_size=input_dim,
-            hidden_size=gru_hidden_size,
-            num_layers=gru_num_layers,
-            batch_first=True,
-            bidirectional=gru_bidirectional,
-            dropout=dropout if gru_num_layers > 1 else 0.0,
+        self.gru_hidden_size = gru_hidden_size
+
+        self.gru_num_layers = gru_num_layers
+
+        self.gru_bidirectional = gru_bidirectional
+
+        self.transformer_d_model = transformer_d_model
+
+        self.transformer_nhead = transformer_nhead
+
+        self.transformer_num_layers = transformer_num_layers
+
+        self.transformer_dim_feedforward = transformer_dim_feedforward
+
+        self.dropout = dropout
+
+        # ==========================================================
+        # GRU Encoder
+        # ==========================================================
+
+        gru_output_dim = gru_hidden_size * (
+
+            2 if gru_bidirectional else 1
+
         )
 
-        # ---- 2. Bridge GRU output -> Transformer d_model --------------------
-        self.input_proj = nn.Linear(gru_out_dim, transformer_d_model)
-        self.pos_encoder = PositionalEncoding(transformer_d_model, max_len=seq_len + 8, dropout=dropout)
+        self.gru = nn.GRU(
+
+            input_size=input_dim,
+
+            hidden_size=gru_hidden_size,
+
+            num_layers=gru_num_layers,
+
+            batch_first=True,
+
+            bidirectional=gru_bidirectional,
+
+            dropout=dropout if gru_num_layers > 1 else 0.0,
+
+        )
+
+        # ==========================================================
+        # Projection Layer
+        # ==========================================================
+
+        self.input_projection = nn.Sequential(
+
+            nn.Linear(
+
+                gru_output_dim,
+
+                transformer_d_model,
+
+            ),
+
+            nn.Dropout(dropout),
+
+        )
+
+        # ==========================================================
+        # Positional Encoding
+        # ==========================================================
+
+        self.position_encoding = PositionalEncoding(
+
+            transformer_d_model,
+
+            max_len=seq_len + 8,
+
+            dropout=dropout,
+
+        )
+
+        # ==========================================================
+        # CLS Token
+        # ==========================================================
 
         if pooling == "cls":
-            self.cls_token = nn.Parameter(torch.zeros(1, 1, transformer_d_model))
-            nn.init.trunc_normal_(self.cls_token, std=0.02)
 
-        # ---- 3. Transformer encoder stage -----------------------------------
+            self.cls_token = nn.Parameter(
+
+                torch.zeros(
+
+                    1,
+
+                    1,
+
+                    transformer_d_model,
+
+                )
+
+            )
+
+            nn.init.trunc_normal_(
+
+                self.cls_token,
+
+                std=0.02,
+
+            )
+
+        # ==========================================================
+        # Transformer Encoder
+        # ==========================================================
+
         encoder_layer = nn.TransformerEncoderLayer(
+
             d_model=transformer_d_model,
+
             nhead=transformer_nhead,
+
             dim_feedforward=transformer_dim_feedforward,
+
             dropout=dropout,
-            batch_first=True,
+
             activation="gelu",
-        )
-        self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=transformer_num_layers)
 
-        # ---- 4. Classification head ------------------------------------------
-        self.norm = nn.LayerNorm(transformer_d_model)
+            batch_first=True,
+
+        )
+
+        self.transformer_encoder = nn.TransformerEncoder(
+
+            encoder_layer,
+
+            num_layers=transformer_num_layers,
+
+        )
+
+        # ==========================================================
+        # Classification Head
+        # ==========================================================
+
+        self.layer_norm = nn.LayerNorm(
+
+            transformer_d_model
+
+        )
+
         self.classifier = nn.Sequential(
-            nn.Linear(transformer_d_model, transformer_d_model // 2),
+
+            nn.Linear(
+
+                transformer_d_model,
+
+                transformer_d_model // 2,
+
+            ),
+
             nn.GELU(),
+
             nn.Dropout(dropout),
-            nn.Linear(transformer_d_model // 2, num_classes),
+
+            nn.Linear(
+
+                transformer_d_model // 2,
+
+                num_classes,
+
+            ),
+
         )
 
-    # ------------------------------------------------------------------
-    def forward_features(self, x: torch.Tensor) -> torch.Tensor:
-        """Returns the pooled embedding BEFORE the classifier head.
-        Useful for Member 2's trust scoring / explainability work
-        (e.g. comparing client embeddings, or feeding SHAP)."""
-        gru_out, _ = self.gru(x)                       # (B, T, gru_out_dim)
-        proj = self.input_proj(gru_out)                # (B, T, d_model)
+        # ==========================================================
+        # Weight Initialization
+        # ==========================================================
+
+        self._initialize_weights()
+
+    # ==============================================================
+    # Weight Initialization
+    # ==============================================================
+
+    def _initialize_weights(self):
+        """
+        Xavier initialization for all Linear layers.
+        """
+
+        for module in self.modules():
+
+            if isinstance(module, nn.Linear):
+
+                nn.init.xavier_uniform_(
+
+                    module.weight
+
+                )
+
+                if module.bias is not None:
+
+                    nn.init.zeros_(
+
+                        module.bias
+
+                    )
+    # ==============================================================
+    # Feature Extraction
+    # ==============================================================
+
+    def forward_features(
+        self,
+        x: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Extract latent feature embedding before classification.
+        """
+
+        gru_output, _ = self.gru(x)
+
+        projected = self.input_projection(
+            gru_output
+        )
 
         if self.pooling == "cls":
-            cls_tokens = self.cls_token.expand(proj.size(0), -1, -1)
-            proj = torch.cat([cls_tokens, proj], dim=1)
 
-        proj = self.pos_encoder(proj)
-        encoded = self.transformer_encoder(proj)        # (B, T[+1], d_model)
+            cls_tokens = self.cls_token.expand(
+                projected.size(0),
+                -1,
+                -1,
+            )
+
+            projected = torch.cat(
+                (
+                    cls_tokens,
+                    projected,
+                ),
+                dim=1,
+            )
+
+        encoded = self.position_encoding(
+            projected
+        )
+
+        encoded = self.transformer_encoder(
+            encoded
+        )
 
         if self.pooling == "mean":
+
             pooled = encoded.mean(dim=1)
+
         elif self.pooling == "last":
+
             pooled = encoded[:, -1, :]
-        else:  # "cls"
+
+        else:
+
             pooled = encoded[:, 0, :]
 
-        return self.norm(pooled)
+        pooled = self.layer_norm(
+            pooled
+        )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """x: (batch, seq_len, input_dim) -> logits: (batch, num_classes)"""
-        pooled = self.forward_features(x)
-        return self.classifier(pooled)
+        return pooled
 
-    @torch.no_grad()
-    def predict_proba(self, x: torch.Tensor) -> torch.Tensor:
+    # ==============================================================
+    # Forward
+    # ==============================================================
+
+    def forward(
+        self,
+        x: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Forward propagation.
+        """
+
+        features = self.forward_features(
+            x
+        )
+
+        logits = self.classifier(
+            features
+        )
+
+        return logits
+
+    # ==============================================================
+    # Prediction
+    # ==============================================================
+
+    @torch.inference_mode()
+    def predict_proba(
+        self,
+        x: torch.Tensor,
+    ) -> torch.Tensor:
+
         was_training = self.training
+
         self.eval()
-        logits = self.forward(x)
+
+        probabilities = torch.softmax(
+
+            self.forward(x),
+
+            dim=-1,
+
+        )
+
         if was_training:
+
             self.train()
-        return torch.softmax(logits, dim=-1)
 
-    @torch.no_grad()
-    def predict(self, x: torch.Tensor) -> torch.Tensor:
-        return self.predict_proba(x).argmax(dim=-1)
+        return probabilities
 
-    # ---- Flower-friendly weight helpers ---------------------------------
-    def get_weights(self) -> List[np.ndarray]:
-        """list[np.ndarray] ordered like state_dict() -- pass straight into
-        Flower's `ndarrays_to_parameters` / `NumPyClient.get_parameters`."""
-        return [val.detach().cpu().numpy() for val in self.state_dict().values()]
+    @torch.inference_mode()
+    def predict(
+        self,
+        x: torch.Tensor,
+    ) -> torch.Tensor:
 
-    def set_weights(self, weights: List[np.ndarray]) -> None:
-        state_keys = list(self.state_dict().keys())
-        new_state = {k: torch.tensor(w) for k, w in zip(state_keys, weights)}
-        self.load_state_dict(new_state, strict=True)
+        return self.predict_proba(
+            x
+        ).argmax(dim=-1)
 
-    def count_parameters(self) -> int:
-        return sum(p.numel() for p in self.parameters() if p.requires_grad)
+    # ==============================================================
+    # Flower Weight Utilities
+    # ==============================================================
 
-    def get_config(self) -> dict:
-        """Lightweight config snapshot -- handy for logging / experiment tracking."""
-        return {
-            "input_dim": self.input_dim,
-            "seq_len": self.seq_len,
-            "num_classes": self.num_classes,
-            "pooling": self.pooling,
-            "num_parameters": self.count_parameters(),
+    def get_weights(
+        self,
+    ) -> List[np.ndarray]:
+        """
+        Convert model weights to NumPy arrays.
+        """
+
+        return [
+
+            parameter.detach()
+
+            .cpu()
+
+            .numpy()
+
+            for parameter in self.state_dict().values()
+
+        ]
+
+    def set_weights(
+        self,
+        weights: List[np.ndarray],
+    ) -> None:
+        """
+        Load Flower weights.
+        """
+
+        state_dict = {
+
+            key: torch.tensor(weight)
+
+            for key, weight in zip(
+
+                self.state_dict().keys(),
+
+                weights,
+
+            )
+
         }
 
+        self.load_state_dict(
+
+            state_dict,
+
+            strict=True,
+
+        )
+
+    # ==============================================================
+    # Statistics
+    # ==============================================================
+
+    def count_parameters(
+        self,
+    ) -> int:
+        """
+        Count trainable parameters.
+        """
+
+        return sum(
+
+            parameter.numel()
+
+            for parameter in self.parameters()
+
+            if parameter.requires_grad
+
+        )
+
+    def get_config(
+        self,
+    ) -> dict:
+        """
+        Return model configuration.
+        """
+
+        return {
+
+            "input_dim": self.input_dim,
+
+            "seq_len": self.seq_len,
+
+            "num_classes": self.num_classes,
+
+            "gru_hidden_size": self.gru_hidden_size,
+
+            "gru_num_layers": self.gru_num_layers,
+
+            "gru_bidirectional": self.gru_bidirectional,
+
+            "transformer_d_model": self.transformer_d_model,
+
+            "transformer_heads": self.transformer_nhead,
+
+            "transformer_layers": self.transformer_num_layers,
+
+            "transformer_feedforward":
+                self.transformer_dim_feedforward,
+
+            "dropout": self.dropout,
+
+            "pooling": self.pooling,
+
+            "trainable_parameters":
+                self.count_parameters(),
+
+        }
+
+    # ==============================================================
+    # Save / Load
+    # ==============================================================
+
+    def save(
+        self,
+        path: str,
+    ):
+        """
+        Save model weights.
+        """
+
+        torch.save(
+
+            self.state_dict(),
+
+            path,
+
+        )
+
+    def load(
+        self,
+        path: str,
+        map_location="cpu",
+    ):
+        """
+        Load model weights.
+        """
+
+        self.load_state_dict(
+
+            torch.load(
+
+                path,
+
+                map_location=map_location,
+
+            )
+
+        )
+
+    # ==============================================================
+    # Model Summary
+    # ==============================================================
+
+    def summary(
+        self,
+    ):
+        """
+        Print model architecture and configuration.
+        """
+
+        print("\n" + "=" * 70)
+
+        print(
+            "Hybrid GRU + Transformer Model"
+        )
+
+        print("=" * 70)
+
+        print(self)
+
+        print("\nConfiguration")
+
+        print("-" * 70)
+
+        for key, value in self.get_config().items():
+
+            print(
+                f"{key:<30}: {value}"
+            )
+
+        print("=" * 70)
+
+
+# ==============================================================
+# Sanity Check
+# ==============================================================
 
 if __name__ == "__main__":
-    # Quick shape sanity check: python -m src.models.hybrid_model
-    batch_size, seq_len, input_dim, num_classes = 8, 64, 1, 6
-    model = HybridGRUTransformer(input_dim=input_dim, seq_len=seq_len, num_classes=num_classes)
-    dummy = torch.randn(batch_size, seq_len, input_dim)
-    out = model(dummy)
-    print("Output shape:", tuple(out.shape))          # (8, 6)
-    print("Config:", model.get_config())
+
+    batch_size = 8
+
+    seq_len = 64
+
+    input_dim = 1
+
+    num_classes = 6
+
+    model = HybridGRUTransformer(
+
+        input_dim=input_dim,
+
+        seq_len=seq_len,
+
+        num_classes=num_classes,
+
+    )
+
+    model.summary()
+
+    dummy_input = torch.randn(
+
+        batch_size,
+
+        seq_len,
+
+        input_dim,
+
+    )
+
+    output = model(
+        dummy_input
+    )
+
+    print(
+
+        "\nOutput Shape:",
+
+        tuple(output.shape),
+
+    )

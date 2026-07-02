@@ -25,11 +25,32 @@ import torch.nn.functional as F
 # Trust Weights
 # ===========================================================
 
-EMBEDDING_WEIGHT = 0.30
-VALIDATION_WEIGHT = 0.30
-REPUTATION_WEIGHT = 0.20
-ANOMALY_WEIGHT = 0.20
+TRUST_WEIGHTS = {
 
+    "embedding":0.30,
+
+    "validation":0.30,
+
+    "reputation":0.20,
+
+    "anomaly":0.20
+
+}
+
+EMBEDDING_WEIGHT = TRUST_WEIGHTS["embedding"]
+VALIDATION_WEIGHT = TRUST_WEIGHTS["validation"]
+REPUTATION_WEIGHT = TRUST_WEIGHTS["reputation"]
+ANOMALY_WEIGHT = TRUST_WEIGHTS["anomaly"]
+
+TOTAL_WEIGHT = (
+    EMBEDDING_WEIGHT
+    + VALIDATION_WEIGHT
+    + REPUTATION_WEIGHT
+    + ANOMALY_WEIGHT
+)
+
+assert abs(TOTAL_WEIGHT - 1.0) < 1e-6, \
+    "Trust weights must sum to 1.0"
 
 # ===========================================================
 # Embedding Similarity
@@ -37,7 +58,7 @@ ANOMALY_WEIGHT = 0.20
 
 def calculate_embedding_similarity(
     client_embedding: torch.Tensor,
-    global_embedding: torch.Tensor
+    global_embedding: torch.Tensor,
 ) -> float:
     """
     Computes cosine similarity between client embedding
@@ -46,6 +67,15 @@ def calculate_embedding_similarity(
     Returns:
         float in range [0,1]
     """
+
+    client_embedding = client_embedding.float()
+    global_embedding = global_embedding.float()
+
+    if client_embedding.shape != global_embedding.shape:
+
+        raise ValueError(
+            "Embedding dimensions do not match."
+        )
 
     similarity = F.cosine_similarity(
         client_embedding.unsqueeze(0),
@@ -64,19 +94,15 @@ def calculate_embedding_similarity(
 # ===========================================================
 
 def calculate_validation_score(
-    validation_accuracy: float,
-    max_accuracy: float = 100.0
+    validation_accuracy: float
 ) -> float:
-    """
-    Converts validation accuracy into
-    a normalized score.
-    """
 
-    score = validation_accuracy / max_accuracy
+    validation_accuracy = max(
+        0.0,
+        min(validation_accuracy, 1.0)
+    )
 
-    score = max(0.0, min(1.0, score))
-
-    return float(score)
+    return float(validation_accuracy)
 
 
 # ===========================================================
@@ -114,22 +140,34 @@ def calculate_anomaly_score(
     """
     Computes anomaly score using Euclidean distance.
 
-    Smaller distance
-        ->
-    Higher anomaly score.
+    Smaller distance -> Higher trust.
     """
+
+    client_embedding = client_embedding.float()
+    global_embedding = global_embedding.float()
+
+    if client_embedding.shape != global_embedding.shape:
+
+        raise ValueError(
+            "Embedding dimensions do not match."
+        )
 
     distance = torch.norm(
         client_embedding - global_embedding,
         p=2
     ).item()
 
+    # Prevent extremely large distances from dominating
+    distance = min(distance, 100.0)
+
     anomaly_score = 1.0 / (1.0 + distance)
 
-    anomaly_score = max(0.0, min(1.0, anomaly_score))
+    anomaly_score = max(
+        0.0,
+        min(anomaly_score, 1.0)
+    )
 
     return float(anomaly_score)
-
 
 # ===========================================================
 # Trust Score
@@ -212,6 +250,17 @@ def evaluate_client_trust(
     """
     Complete Adaptive Trust Evaluation Pipeline.
     """
+    if torch.isnan(client_embedding).any():
+
+        raise ValueError(
+            "Client embedding contains NaN values."
+        )
+
+    if torch.isnan(global_embedding).any():
+
+        raise ValueError(
+            "Global embedding contains NaN values."
+        )
 
     embedding_similarity = calculate_embedding_similarity(
         client_embedding,
@@ -245,20 +294,49 @@ def evaluate_client_trust(
 
     return {
 
-        "embedding_similarity": embedding_similarity,
+        "embedding_similarity": round(
+            embedding_similarity,
+            4
+        ),
 
-        "validation_score": validation_score,
+        "validation_score": round(
+            validation_score,
+            4
+        ),
 
-        "historical_reputation": historical_reputation,
+        "historical_reputation": round(
+            historical_reputation,
+            4
+        ),
 
-        "anomaly_score": anomaly_score,
+        "anomaly_score": round(
+            anomaly_score,
+            4
+        ),
 
-        "trust_score": trust_score,
+        "trust_score": round(
+            trust_score,
+            4
+        ),
 
-        "status": client_status
+        "confidence": round(
 
+            EMBEDDING_WEIGHT * embedding_similarity +
+
+            VALIDATION_WEIGHT * validation_score +
+
+            REPUTATION_WEIGHT * historical_reputation +
+
+            ANOMALY_WEIGHT * anomaly_score,
+
+            4
+
+        ),
+
+        "status": client_status,
+
+        "weights": TRUST_WEIGHTS
     }
-
 
 # ===========================================================
 # Utility Function
@@ -269,8 +347,9 @@ def print_trust_report(result: dict):
     Displays trust evaluation result.
     """
 
-    print("\n========== Trust Evaluation ==========\n")
-
+    print("\n" + "=" * 60)
+    print("Adaptive Trust Evaluation")
+    print("=" * 60)
     print(f"Embedding Similarity : {result['embedding_similarity']:.4f}")
 
     print(f"Validation Score     : {result['validation_score']:.4f}")
@@ -281,4 +360,8 @@ def print_trust_report(result: dict):
 
     print(f"Trust Score          : {result['trust_score']:.4f}")
 
+    print(f"Confidence           : {result['confidence']:.4f}")
+
     print(f"Client Status        : {result['status']}")
+
+    print("=" * 60)
