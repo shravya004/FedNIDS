@@ -54,20 +54,23 @@ trust_scores = [
 ]
 
 print("\nBefore Blacklisting")
+print("-" * 40)
 
-#aggregator.print_weights(trust_scores)
+global_model, aggregation_info = aggregator.aggregate(
 
-global_model = aggregator.aggregate(
+    client_models=client_models,
 
-    client_models,
-
-    trust_scores
+    trust_scores=trust_scores
 
 )
 
 print("\nAggregated Model")
 
 print(global_model)
+
+print("\nAggregation Information")
+
+print(aggregation_info)
 
 # --------------------------------------------------
 # Blacklist Client 3
@@ -86,21 +89,24 @@ blacklist.add_client(
 )
 
 print("\n")
-
 print("=" * 60)
-
 print("Aggregation After Blacklisting Client_3")
-
 print("=" * 60)
 
-global_model = aggregator.aggregate(
+global_model, aggregation_info = aggregator.aggregate(
 
-    client_models,
+    client_models=client_models,
 
-    trust_scores,
+    trust_scores=trust_scores,
 
     blacklist=blacklist
 
 )
 
+print("\nAggregated Model")
+
 print(global_model)
+
+print("\nAggregation Information")
+
+print(aggregation_info)
