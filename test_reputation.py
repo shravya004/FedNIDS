@@ -10,23 +10,25 @@ print("=" * 60)
 # Simulate Multiple Federated Learning Rounds
 # --------------------------------------------------
 
-manager.update("Client_1", 0.96)
-manager.update("Client_1", 0.95)
-manager.update("Client_1", 0.97)
+# Client 1
+manager.update("Client_1", 0.96, current_round=1)
+manager.update("Client_1", 0.95, current_round=2)
+manager.update("Client_1", 0.97, current_round=3)
 
-manager.update("Client_2", 0.82)
-manager.update("Client_2", 0.80)
+# Client 2
+manager.update("Client_2", 0.82, current_round=1)
+manager.update("Client_2", 0.80, current_round=2)
 
-manager.update("Client_3", 0.30)
-manager.update("Client_3", 0.25)
-manager.update("Client_3", 0.20)
+# Client 3
+manager.update("Client_3", 0.30, current_round=1)
+manager.update("Client_3", 0.25, current_round=2)
+manager.update("Client_3", 0.20, current_round=3)
 
 print("\n========== Individual Client Details ==========\n")
 
 for client in manager.get_all_clients():
 
     print(f"Client : {client}")
-
     print("-" * 45)
 
     print(
@@ -60,15 +62,11 @@ summary = manager.reputation_summary()
 for client, info in summary.items():
 
     print(f"\n{client}")
-
     print("-" * 30)
 
     print(f"Current Reputation : {info['reputation']:.4f}")
-
     print(f"Average Reputation : {info['average']:.4f}")
-
     print(f"Rounds : {info['rounds']}")
-
     print(f"Low Trust Count : {info['low_trust']}")
 
 print("\n")
