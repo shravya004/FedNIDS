@@ -204,49 +204,62 @@ day one).
 
 ## Adaptive Trust Framework (Member 2)
 
-The Adaptive Trust Framework enhances the security of the federated intrusion detection system by identifying unreliable or malicious clients before global model aggregation.
+The Adaptive Trust Framework improves the robustness and security of the federated intrusion detection system by evaluating the reliability of participating clients before global model aggregation. Instead of treating all client updates equally, the framework dynamically assigns trust scores, maintains historical reputation, detects malicious behavior, and performs trust-aware aggregation to mitigate the impact of poisoned or unreliable model updates.
 
 ### Components
 
-#### Adaptive Trust Scoring
+### Adaptive Trust Scoring
 
-Each participating client receives a trust score based on multiple factors:
+Each participating client receives a trust score computed from multiple complementary indicators:
 
-* Embedding similarity between the client model and the global model
-* Local validation accuracy
-* Historical reputation
-* Anomaly score
+- Embedding similarity between the client model and the global model
+- Local validation accuracy
+- Historical reputation maintained across communication rounds
 
-#### Reputation Memory
+These indicators are combined into a single adaptive trust score used for client evaluation.
 
-A reputation manager maintains historical trust information for every federated client across communication rounds.
+---
 
-Features include:
+### Reputation Management
 
-* Current reputation
-* Trust history
-* Average reputation
-* Communication round tracking
-* Consecutive low-trust counter
+A dedicated reputation manager maintains historical trust information for every federated client throughout the training process.
 
-#### Automatic Blacklisting
+The stored information includes:
 
-Clients with consecutive low trust scores are automatically blacklisted and excluded from future aggregation rounds.
+- Current reputation
+- Trust history
+- Average reputation
+- Communication round tracking
+- Consecutive low-trust counter
 
-Stored information includes:
+Historical reputation enables long-term behavioral analysis and improves trust stability.
 
-* Client ID
-* Blacklisting reason
-* Communication round
-* Trust score
+---
 
-#### Trust-Aware Aggregation
+### Automatic Blacklisting
 
-Instead of conventional FedAvg, client model updates are weighted according to their trust scores. Blacklisted clients are excluded from aggregation.
+Clients whose trust score remains below the predefined threshold for **three consecutive communication rounds** are automatically blacklisted.
 
-### Implemented Modules
+The blacklist stores:
 
-```
+- Client ID
+- Blacklisting reason
+- Communication round
+- Trust score at the time of blacklisting
+
+Blacklisted clients are excluded from all subsequent aggregation rounds.
+
+---
+
+### Trust-Aware Aggregation
+
+Instead of conventional FedAvg, aggregation weights are computed by normalizing client trust scores. Only trusted clients contribute to the global model, while blacklisted clients are automatically excluded.
+
+---
+
+## Implemented Modules
+
+```text
 src/trust/
 │
 ├── trust_score.py
@@ -256,24 +269,30 @@ src/trust/
 └── integration.py
 ```
 
-### Testing
+---
 
-The following test scripts validate the implementation:
+## Testing
 
-```
-test_trust.py
-test_reputation.py
-test_blacklist.py
-test_aggregation.py
-test_integration.py
-test_member2_complete.py
-```
+The following test scripts validate the Adaptive Trust Framework:
 
-The complete demonstration (`test_member2_complete.py`) verifies:
+- test_trust.py
+- test_reputation.py
+- test_blacklist.py
+- test_aggregation.py
+- test_integration.py
+- test_member2_complete.py
 
-* Adaptive trust scoring
-* Reputation updates
-* Automatic blacklisting
-* Trust-aware aggregation
-* End-to-end trust framework execution
+The complete demonstration (`test_member2_complete.py`) validates:
 
+- Adaptive trust score computation
+- Reputation management
+- Automatic client classification
+- Automatic blacklisting
+- Trust-aware aggregation
+- End-to-end execution of the Adaptive Trust Framework
+
+---
+
+**Dataset:** FLNET2023
+
+**Framework:** Adaptive Trust-Aware Federated Intrusion Detection System
