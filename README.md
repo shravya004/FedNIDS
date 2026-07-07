@@ -291,6 +291,223 @@ The complete demonstration (`test_member2_complete.py`) validates:
 - Trust-aware aggregation
 - End-to-end execution of the Adaptive Trust Framework
 
+## Federated Learning Framework (Member 3)
+
+The Federated Learning Framework implements the complete distributed training pipeline for the Adaptive Trust-Aware Federated Intrusion Detection System. It coordinates multiple FLNET2023 clients using the Flower framework, performs secure model parameter exchange, integrates the Adaptive Trust Framework into the aggregation process, and evaluates the global model after every communication round.
+
+Unlike conventional FedAvg, this framework performs **Trust-Aware Federated Aggregation**, where client updates are evaluated using adaptive trust scores before contributing to the global model. The framework supports secure client communication, embedding-based trust evaluation, reputation management, and automated experiment logging.
+
+### Components
+
+### Flower Federated Server
+
+The Flower server coordinates all participating federated clients throughout the training process.
+
+Responsibilities include:
+
+- Client registration
+- Distribution of global model parameters
+- Collection of locally trained model updates
+- Loading client embeddings
+- Global embedding computation
+- Adaptive trust evaluation
+- Trust-aware model aggregation
+- Global model synchronization
+- Global model evaluation
+
+The server acts as the central coordinator for the complete federated learning workflow.
+
+---
+
+### Flower Federated Client
+
+Each client performs local intrusion detection training on its own FLNET2023 partition without sharing raw network traffic.
+
+Each communication round performs:
+
+- Loading client-specific datasets
+- Receiving global model parameters
+- Local Hybrid GRU-Transformer training
+- Local validation
+- Feature embedding extraction
+- Transmission of updated model parameters
+- Transmission of evaluation metrics
+- Transmission of learned embeddings
+
+Only model parameters, embeddings, and evaluation metrics are exchanged with the server, preserving data privacy.
+
+---
+
+### Local Training Pipeline
+
+Each federated communication round consists of:
+
+- Receiving the latest global model
+- Updating local model parameters
+- Local model training
+- Local validation
+- Embedding extraction
+- Saving client embeddings
+- Returning updated model weights
+- Returning evaluation metrics
+
+The complete local training pipeline is implemented in:
+
+```
+src/federated/train_utils.py
+```
+
+---
+
+### Trust-Aware Flower Strategy
+
+A custom Flower aggregation strategy replaces the standard FedAvg algorithm.
+
+The strategy performs:
+
+- Loading client embeddings
+- Computing the global embedding
+- Invoking the Adaptive Trust Framework
+- Trust score calculation
+- Reputation update
+- Automatic blacklist verification
+- Trust-aware weighted aggregation
+- Global model synchronization
+
+Implemented in:
+
+```
+src/federated/trust_strategy.py
+```
+
+---
+
+### Embedding-Based Client Communication
+
+Each client generates a latent feature embedding after every local training round using the Hybrid GRU-Transformer model.
+
+The embeddings are transmitted to the server and used by the Adaptive Trust Framework for:
+
+- Embedding similarity computation
+- Anomaly detection
+- Trust score calculation
+- Reputation management
+
+This enables secure client evaluation without exposing local training data.
+
+---
+
+### Global Model Evaluation
+
+After every federated communication round, the global model is evaluated using the aligned FLNET2023 global test set.
+
+Evaluation metrics include:
+
+- Loss
+- Accuracy
+- Precision
+- Recall
+- F1 Score
+
+These metrics are recorded after every round for performance analysis and comparison.
+
+---
+
+### Experiment Logging
+
+The framework automatically records every federated communication round.
+
+Generated outputs include:
+
+- Client training metrics
+- Trust scores
+- Reputation history
+- Blacklisted clients
+- Aggregation statistics
+- Performance graphs
+- Experiment reports
+- Client embeddings
+
+Implemented in:
+
+```
+src/utils/project_logger.py
+src/utils/plot_results.py
+```
+
+---
+
+## Implemented Modules
+
+```
+src/federated/
+│
+├── client.py
+├── server.py
+├── train_utils.py
+└── trust_strategy.py
+
+src/utils/
+│
+├── project_logger.py
+└── plot_results.py
+```
+
+---
+
+## Testing
+
+The following scripts validate the complete Federated Learning Framework:
+
+```
+test_federated_setup.py
+test_train.py
+```
+
+The framework validates:
+
+- Flower server initialization
+- Flower client communication
+- Local model training
+- Model parameter synchronization
+- Embedding extraction
+- Trust-aware aggregation
+- Global model updates
+- Multi-round federated learning execution
+
+---
+
+## Federated Learning Workflow
+
+```
+                 Global Server
+                       │
+        ┌──────────────┴──────────────┐
+        │                             │
+ Receive Global Model         Receive Global Model
+        │                             │
+   Client 1                  Client 2 ... Client N
+        │                             │
+ Local Training              Local Training
+        │                             │
+ Local Validation           Local Validation
+        │                             │
+ Embedding Extraction     Embedding Extraction
+        │                             │
+ Send Model + Metrics + Embedding
+        └──────────────┬──────────────┘
+                       │
+             Trust Evaluation
+                       │
+             Reputation Update
+                       │
+          Trust-Aware Aggregation
+                       │
+             Updated Global Model
+                       │
+               Next FL Round
+```
+
 ---
 
 **Dataset:** FLNET2023
