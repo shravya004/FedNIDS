@@ -191,21 +191,42 @@ class TrustAwareFL:
         current_round,
     ):
         """
-        Evaluate trust for all clients
-        participating in the current round.
+        Evaluate the trustworthiness of all participating clients.
 
-        client_results format:
+        Parameters
+        ----------
+        client_results : list[dict]
+            Each client dictionary should contain:
+            {
+                "client_id": ...,
+                "embedding": ...,
+                "accuracy": ...
+            }
 
-        {
-            "client_id": ...,
-            "embedding": ...,
-            "accuracy": ...
-        }
+        global_embedding : torch.Tensor
+            Mean embedding computed from all client embeddings.
+
+        current_round : int
+            Current federated communication round.
+
+        Returns
+        -------
+        list[dict]
+            Trust evaluation results for all clients.
         """
 
         outputs = []
 
         for client in client_results:
+
+            # Validate required fields
+            required_keys = ["client_id", "embedding", "accuracy"]
+
+            for key in required_keys:
+                if key not in client:
+                    raise KeyError(
+                        f"Missing '{key}' for client: {client}"
+                    )
 
             result = self.process_client(
 
@@ -224,7 +245,7 @@ class TrustAwareFL:
             outputs.append(result)
 
         return outputs
-        # =====================================================
+    # =====================================================
     # Print Reputation
     # =====================================================
 

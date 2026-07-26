@@ -322,26 +322,34 @@ class TrustAwareStrategy(FedAvg):
         print("Adaptive Multi-Factor Trust Evaluation")
         print("=" * 70)
 
+        results = self.trust_framework.process_all_clients(
+
+            client_results=client_information,
+
+            global_embedding=global_embedding,
+
+            current_round=server_round,
+
+        )
         # --------------------------------------------------
         # Pass 2
         # Evaluate Trust For Every Client
         # --------------------------------------------------
 
-        for client in client_information:
+        for client, result in zip(client_information, results):
+            # result = self.trust_framework.process_client(
 
-            result = self.trust_framework.process_client(
+            #     client_id=client["client_id"],
 
-                client_id=client["client_id"],
+            #     client_embedding=client["embedding"],
 
-                client_embedding=client["embedding"],
+            #     global_embedding=global_embedding,
 
-                global_embedding=global_embedding,
+            #     validation_accuracy=client["accuracy"],
 
-                validation_accuracy=client["accuracy"],
+            #     current_round=server_round,
 
-                current_round=server_round,
-
-            )
+            # )
 
             trust_score = result["trust_score"]
 
