@@ -3,6 +3,7 @@ import torch
 from src.trust.aggregation import TrustAggregator
 from src.trust.blacklist import BlacklistManager
 
+
 aggregator = TrustAggregator()
 blacklist = BlacklistManager()
 
@@ -53,10 +54,14 @@ trust_scores = [
 
 ]
 
+# ==================================================
+# Before Blacklisting
+# ==================================================
+
 print("\nBefore Blacklisting")
 print("-" * 40)
 
-global_model, aggregation_info = aggregator.aggregate(
+global_model = aggregator.aggregate(
 
     client_models=client_models,
 
@@ -64,17 +69,27 @@ global_model, aggregation_info = aggregator.aggregate(
 
 )
 
-print("\nAggregated Model")
+aggregation_info = aggregator.export_statistics()
 
+print("\nAggregated Model")
 print(global_model)
 
 print("\nAggregation Information")
+print("-" * 40)
 
-print(aggregation_info)
+print(f"Included Clients   : {aggregation_info['included_clients']}")
+print(f"Excluded Clients   : {aggregation_info['excluded_clients']}")
+print(f"Trust Weights      : {aggregation_info['trust_weights']}")
+print(f"Total Clients      : {aggregation_info['num_clients']}")
+print(f"Trusted Clients    : {aggregation_info['num_trusted']}")
+print(f"Blacklisted Clients: {aggregation_info['num_blacklisted']}")
 
-# --------------------------------------------------
+print("\n")
+aggregator.print_summary()
+
+# ==================================================
 # Blacklist Client 3
-# --------------------------------------------------
+# ==================================================
 
 blacklist.add_client(
 
@@ -93,7 +108,7 @@ print("=" * 60)
 print("Aggregation After Blacklisting Client_3")
 print("=" * 60)
 
-global_model, aggregation_info = aggregator.aggregate(
+global_model = aggregator.aggregate(
 
     client_models=client_models,
 
@@ -103,10 +118,25 @@ global_model, aggregation_info = aggregator.aggregate(
 
 )
 
-print("\nAggregated Model")
+aggregation_info = aggregator.export_statistics()
 
+print("\nAggregated Model")
 print(global_model)
 
 print("\nAggregation Information")
+print("-" * 40)
 
-print(aggregation_info)
+print(f"Included Clients   : {aggregation_info['included_clients']}")
+print(f"Excluded Clients   : {aggregation_info['excluded_clients']}")
+print(f"Trust Weights      : {aggregation_info['trust_weights']}")
+print(f"Total Clients      : {aggregation_info['num_clients']}")
+print(f"Trusted Clients    : {aggregation_info['num_trusted']}")
+print(f"Blacklisted Clients: {aggregation_info['num_blacklisted']}")
+
+print("\n")
+aggregator.print_summary()
+
+print("\n")
+print("=" * 60)
+print("Aggregation Test Completed Successfully")
+print("=" * 60)
