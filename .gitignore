@@ -29,3 +29,6 @@ env/
 *.log
 runs/
 wandb/
+
+# Generated experiment results
+results/
